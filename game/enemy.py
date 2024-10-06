@@ -14,6 +14,11 @@ class Enemy(Entity):
         self.attack_cooldown = 1.5
         self.last_attack_time = 0
 
+        # Knockback attributes
+        self.knockback = 0  # Force of knockback
+        self.knockback_direction = Vec3(0, 0, 0)
+        self.knockback_duration = 0.2  # Duration of knockback in seconds
+
         # Set up the model and texture as a thin cube
         self.model = 'cube'
         self.texture = texture
@@ -35,6 +40,10 @@ class Enemy(Entity):
         self.move_towards_player()
         self.face_player()
 
+        # Apply knockback if it exists
+        if self.knockback > 0:
+            self.apply_knockback()
+
     def move_towards_player(self):
         # Calculate direction towards player
         direction = (self.player.position - self.position).normalized()
@@ -48,10 +57,8 @@ class Enemy(Entity):
                 # Try moving left or right to avoid the wall
                 if not self.check_collision(self.left_direction(direction)):
                     self.position += self.left_direction(direction) * self.speed * time.dt
-                   # print(f"Enemy at {self.position} is moving left to avoid wall.")
                 elif not self.check_collision(self.right_direction(direction)):
                     self.position += self.right_direction(direction) * self.speed * time.dt
-                   # print(f"Enemy at {self.position} is moving right to avoid wall.")
                 else:
                     # If both left and right are blocked, try sliding along the wall
                     self.slide_along_wall(direction)
@@ -60,17 +67,6 @@ class Enemy(Entity):
                 self.position += direction * self.speed * time.dt
         else:
             self.attack()
-
-    def face_player(self):
-        # Calculate direction from enemy to player on the XZ plane (ignoring Y axis)
-        direction = self.player.position - self.position
-        direction.y = 0  # Keep the enemy on the same horizontal plane
-
-        # Use atan2 to calculate the angle between the enemy and the player
-        angle = math.degrees(math.atan2(direction.x, direction.z))
-
-        # Rotate the enemy to face the player along the Y-axis
-        self.rotation_y = angle
 
     def detect_wall_ahead(self, direction):
         # Cast a ray in front of the enemy to detect walls
@@ -82,6 +78,54 @@ class Enemy(Entity):
         )
         return hit_info.hit  # Return True if a wall is detected ahead
 
+    def face_player(self):
+        direction = self.player.position - self.position
+        direction.y = 0
+        angle = math.degrees(math.atan2(direction.x, direction.z))
+        self.rotation_y = angle
+
+    def take_damage(self, amount, knockback_direction=None, knockback_force=0):
+        self.health -= amount
+        print(f"Enemy at {self.position} took {amount} damage. Remaining health: {self.health}")
+
+        # Apply knockback if force is provided
+        if knockback_force > 0:
+            self.knockback = knockback_force
+            self.knockback_direction = knockback_direction.normalized()
+
+        if self.health <= 0:
+            self.die()
+
+    def apply_knockback(self):
+        # Zero out the Y component of the knockback direction to prevent vertical movement
+        self.knockback_direction.y = 0
+
+        # Cap the knockback force to prevent extreme values
+        max_knockback_force = 7  # Maximum knockback force allowed (adjust as needed)
+        self.knockback = min(self.knockback, max_knockback_force)
+
+        # Move the enemy backward based on knockback direction and force
+        self.position += self.knockback_direction * time.dt * self.knockback
+
+        # Apply friction to gradually reduce the knockback force
+        friction = 30  # Friction value to slow down knockback (increase to slow down faster)
+        self.knockback -= time.dt * friction
+
+        if self.knockback <= 0:
+            self.knockback = 0
+
+
+    def die(self):
+        print(f"Enemy at {self.position} died.")
+        self.enabled = False
+        if self in self.game.enemies:
+            self.game.enemies.remove(self)
+            print("Enemy removed from game.enemies")
+        else:
+            print("Enemy was not found in game.enemies")
+        destroy(self)
+        self.game.score += 10
+
     def left_direction(self, direction):
         # Calculate a direction to the left (90 degrees)
         return Vec3(-direction.z, 0, direction.x).normalized()
@@ -92,7 +136,6 @@ class Enemy(Entity):
 
     def slide_along_wall(self, direction):
         # Try sliding along the wall by moving along its surface
-        # If the enemy detects a wall ahead, adjust its movement to "slide" along the wall
         slide_direction = Vec3(direction.x, 0, 0) if abs(direction.x) > abs(direction.z) else Vec3(0, 0, direction.z)
         self.position += slide_direction * self.speed * time.dt
         print(f"Enemy at {self.position} is sliding along the wall.")
@@ -117,23 +160,6 @@ class Enemy(Entity):
             self.player.reduce_health(self.attack_damage)
             self.last_attack_time = current_time
             print(f"Enemy at {self.position} attacked player. Player health: {self.player.health}")
-
-    def take_damage(self, amount):
-        self.health -= amount
-        print(f"Enemy at {self.position} took {amount} damage. Remaining health: {self.health}")
-        if self.health <= 0:
-            self.die()
-
-    def die(self):
-        print(f"Enemy at {self.position} died.")
-        self.enabled = False
-        if self in self.game.enemies:
-            self.game.enemies.remove(self)
-            print("Enemy removed from game.enemies")
-        else:
-            print("Enemy was not found in game.enemies")
-        destroy(self)
-        self.game.score += 10
 
 def distance_xz(pos1, pos2):
     # Calculate the distance between two positions on the XZ plane

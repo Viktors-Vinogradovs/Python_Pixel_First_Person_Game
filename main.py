@@ -5,6 +5,7 @@ from game.dungeon_generator import create_dungeon_entities
 from game.manual_dungeon_layout import dungeon_layout
 from pathlib import Path
 import os
+import time
 
 app = Ursina()
 
@@ -66,7 +67,7 @@ for torch in torches:
     for frame in torch_frames:
         frame.emissive = False
 
-    # Create the player
+# Create the player
 player = create_player(hands_texture)
 player.position = (player_start_x * cell_size, -1, player_start_y * cell_size)  # Set player position from the layout
 
@@ -75,28 +76,27 @@ class Game(Entity):
     def __init__(self):
         super().__init__()
         self.score = 0
-        self.wave = 1
         self.enemies = []
         self.cell_size = cell_size
+        self.enemy_spawn_rate = 2  # Initial number of enemies to spawn
+        self.spawn_interval = 5  # Seconds between enemy spawns
+        self.next_spawn_time = time.time() + self.spawn_interval  # Track next spawn time
+        self.survival_start_time = time.time()  # Start time of survival
+        self.spawn_increment_time = 60  # Time after which spawn rate increases
+        self.last_increment_time = time.time()  # Time tracking for spawn rate increment
 
-    def spawn_enemies(self):
-        enemy_count = self.wave * 2
-        exclusion_radius = 1  # Reduced radius to allow closer spawns
-
-        # Extract only the (x, z) coordinates from floor_positions
+    def spawn_enemies(self, count):
         valid_floor_positions = [(pos[0], pos[2]) for pos in floor_positions]
 
         if not valid_floor_positions:
             print("No valid positions to spawn enemies.")
             return
 
-        enemy_count = min(enemy_count, len(valid_floor_positions))
+        enemy_count = min(count, len(valid_floor_positions))
         selected_positions = random.sample(valid_floor_positions, enemy_count)
 
         for (x, z) in selected_positions:
-            spawn_x = x  # x-coordinate from floor position
-            spawn_z = z  # z-coordinate from floor position
-            enemy_position = (spawn_x, 1.1, spawn_z)  # Y-position set to 1.1 for enemy height
+            enemy_position = (x, 1.1, z)  # Y-position set to 1.1 for enemy height
             enemy = Enemy(
                 player=player,
                 game=self,
@@ -107,10 +107,26 @@ class Game(Entity):
             enemy.visible = True
             self.enemies.append(enemy)
 
-game = Game()
-game.spawn_enemies()
+    def update_spawn_logic(self):
+        current_time = time.time()
 
-# Display the score and wave information
+        # Check if it's time to spawn more enemies
+        if current_time >= self.next_spawn_time:
+            self.spawn_enemies(self.enemy_spawn_rate)
+            self.next_spawn_time = current_time + self.spawn_interval  # Set next spawn time
+
+        # Increase enemy spawn rate every minute
+        if current_time - self.last_increment_time >= self.spawn_increment_time:
+            self.enemy_spawn_rate += 2  # Increase the spawn rate every minute
+            self.last_increment_time = current_time  # Reset the timer for the next increment
+
+    def update_survival_time(self):
+        return int(time.time() - self.survival_start_time)  # Return total survival time
+
+game = Game()
+game.spawn_enemies(game.enemy_spawn_rate)  # Spawn initial enemies
+
+# Display the score and survival time
 score_text = Text(
     text=f'Score: {game.score}',
     position=(-0.85, 0.4),
@@ -118,8 +134,9 @@ score_text = Text(
     color=color.white,
     parent=camera.ui
 )
-wave_text = Text(
-    text=f'Wave: {game.wave}',
+
+survival_time_text = Text(
+    text='Survival Time: 0',
     position=(-0.85, 0.35),
     scale=2,
     color=color.white,
@@ -136,52 +153,21 @@ directional_light.color = color.rgb(100, 100, 100)  # Very dim light
 directional_light.direction = Vec3(0, -1, -1)
 directional_light.parent = scene
 
-# Print the current working directory to debug the file path issue
-print(f"Current working directory: {os.getcwd()}")
-
-# Define the path to the shaders relative to the working directory
-vertex_shader_path = Path('assets/shaders/bloom_vertex.glsl')
-fragment_shader_path = Path('assets/shaders/bloom_fragment.glsl')
-
-# Check if the files exist before attempting to read them
-if not vertex_shader_path.is_file():
-    print(f"Error: Vertex shader file not found at {vertex_shader_path}")
-if not fragment_shader_path.is_file():
-    print(f"Error: Fragment shader file not found at {fragment_shader_path}")
-
-# Attempt to load the shaders if they exist
-if vertex_shader_path.is_file() and fragment_shader_path.is_file():
-    bloom_shader = Shader(
-        language=Shader.GLSL,
-        vertex=vertex_shader_path.read_text(),
-        fragment=fragment_shader_path.read_text()
-    )
-
-    # Apply the shader to the camera
-    camera.shader = bloom_shader
-else:
-    print("Shader files not found. Ensure the paths are correct.")
-
-# Print light details for debugging
-print(f"Ambient Light: {ambient_light}, Directional Light: {directional_light}")
-
-# If nothing changes, try force-enabling shadow and lighting settings
-for entity in scene.entities:
-    if hasattr(entity, 'cast_shadows'):
-        entity.cast_shadows = True
-
-    if hasattr(entity, 'receive_shadows'):
-        entity.receive_shadows = True
-
 frame_index = 0
 frame_timer = 0
 frame_delay = 0.3
 
 def update():
-    # Update health, score, and wave displays
+    # Update health and score displays
     player.health_text.text = f'Health: {player.health}'
     score_text.text = f'Score: {game.score}'
-    wave_text.text = f'Wave: {game.wave}'
+
+    # Update enemy spawn logic
+    game.update_spawn_logic()
+
+    # Update survival time and display it
+    survival_time = game.update_survival_time()
+    survival_time_text.text = f'Survival Time: {survival_time}s'
 
     # Update torch frames and facing direction
     global frame_index, frame_timer
@@ -192,20 +178,12 @@ def update():
         frame_timer = 0  # Reset the timer
 
     # Update each torch's texture and make them face the player
-    for torch in torches:  # No tuple unpacking needed, just loop through torches
-        torch.texture = torch_frames[frame_index]  # Cycle through the frames
-        # Make the torch face the player's current position
+    for torch in torches:
+        torch.texture = torch_frames[frame_index]
         player_position = Vec3(player.position.x, torch.position.y, player.position.z)  # Only track X and Z axis
         torch.look_at(player_position)
 
     # Remove disabled enemies
     game.enemies = [enemy for enemy in game.enemies if enemy.enabled]
-
-    # Check if all enemies are defeated
-    if not game.enemies:
-        game.wave += 1
-        game.spawn_enemies()
-
-
 
 app.run()

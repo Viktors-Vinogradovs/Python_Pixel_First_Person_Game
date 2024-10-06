@@ -15,10 +15,13 @@ class Player(FirstPersonController):
             **kwargs
         )
         self.health = 100  # Initialize player's health
-        self.attack_damage = 100  # Damage per attack
+        self.attack_damage = 50  # Damage per attack
         self.attack_range = 5.0  # Range of melee attack
         self.attack_cooldown = 0.5  # Cooldown in seconds
         self.last_attack_time = 0  # Time of the last attack
+
+        # Knockback force
+        self.knockback_force = 15  # You can adjust this value for stronger or weaker knockback
 
         # Create a health bar UI element
         self.health_text = Text(
@@ -108,7 +111,11 @@ class Player(FirstPersonController):
         if hit_info.hit:
             hit_entity = hit_info.entity
             if hasattr(hit_entity, 'take_damage'):
-                hit_entity.take_damage(self.attack_damage)
+                # Calculate knockback direction
+                knockback_direction = hit_entity.position - self.position
+
+                # Pass damage and knockback information to the enemy
+                hit_entity.take_damage(self.attack_damage, knockback_direction, self.knockback_force)
 
     def update(self):
         super().update()
