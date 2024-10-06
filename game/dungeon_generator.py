@@ -4,42 +4,27 @@ import random
 # Function to generate the dungeon layout
 def generate_dungeon(width, height, corridor_width=1, manual_layout=None):
     if manual_layout:
-        # If a manual layout is provided, return it directly
-        start_x, start_y = 1, 1  # Define the starting point in the manual layout
-        return manual_layout, start_x, start_y
-
+        return manual_layout, 1, 1
     if width % (corridor_width + 1) != 1:
         width += (corridor_width + 1) - (width % (corridor_width + 1))
     if height % (corridor_width + 1) != 1:
         height += (corridor_width + 1) - (height % (corridor_width + 1))
-
-    dungeon = [[0 for x in range(width)] for y in range(height)]
-
+    dungeon = [[0 for _ in range(width)] for _ in range(height)]
     start_x = random.randrange(corridor_width, width, corridor_width + 1)
     start_y = random.randrange(corridor_width, height, corridor_width + 1)
     carve_out_area(dungeon, start_x, start_y, corridor_width)
-
     stack = [(start_x, start_y)]
-
     while stack:
         x, y = stack[-1]
-
         directions = []
-        if x > corridor_width:
-            directions.append((- (corridor_width + 1), 0))  # Left
-        if x < width - (corridor_width + 1):
-            directions.append((corridor_width + 1, 0))  # Right
-        if y > corridor_width:
-            directions.append((0, - (corridor_width + 1)))  # Up
-        if y < height - (corridor_width + 1):
-            directions.append((0, corridor_width + 1))  # Down
-
+        if x > corridor_width: directions.append((- (corridor_width + 1), 0))
+        if x < width - (corridor_width + 1): directions.append((corridor_width + 1, 0))
+        if y > corridor_width: directions.append((0, - (corridor_width + 1)))
+        if y < height - (corridor_width + 1): directions.append((0, corridor_width + 1))
         neighbors = []
         for dx, dy in directions:
             nx, ny = x + dx, y + dy
-            if dungeon[ny][nx] == 0:
-                neighbors.append((nx, ny, dx, dy))
-
+            if dungeon[ny][nx] == 0: neighbors.append((nx, ny, dx, dy))
         if neighbors:
             nx, ny, dx, dy = random.choice(neighbors)
             for i in range(corridor_width + 1):
@@ -49,7 +34,6 @@ def generate_dungeon(width, height, corridor_width=1, manual_layout=None):
             stack.append((nx, ny))
         else:
             stack.pop()
-
     return dungeon, start_x, start_y
 
 # Function to carve out paths
@@ -62,37 +46,30 @@ def carve_out_area(dungeon, x, y, corridor_width):
             if 0 <= ny < len(dungeon) and 0 <= nx < len(dungeon[0]):
                 dungeon[ny][nx] = 1  # Mark as path
 
-# Function to add extra walls
-def add_extra_walls(dungeon, corridor_width, extra_walls_probability=0.1):
-    width = len(dungeon[0])
-    height = len(dungeon)
-    for y in range(corridor_width, height - corridor_width):
-        for x in range(corridor_width, width - corridor_width):
-            if dungeon[y][x] == 1:
-                neighbors = 0
-                offsets = [(0, -(corridor_width + 1)), (0, corridor_width + 1), (-(corridor_width + 1), 0), (corridor_width + 1, 0)]
-                for dx, dy in offsets:
-                    nx, ny = x + dx, y + dy
-                    if 0 <= ny < height and 0 <= nx < width:
-                        if dungeon[ny][nx] == 1:
-                            neighbors += 1
-                if neighbors == 1 and random.random() < extra_walls_probability:
-                    dungeon[y][x] = 0  # Turn this path into a wall
-    return dungeon
+# Create torch glow effect
+def create_torch_glow(torch_entity):
+    """Function to create a glow effect for each torch."""
+    torch_glow = Entity(
+        model='sphere',
+        color=color.rgba(255, 223, 0, 50),  # Warm yellow color with transparency
+        scale=Vec3(1.5, 1.5, 1.5),  # Adjust the scale for appropriate light spread
+        position=torch_entity.position + Vec3(0, 1.5, 0),  # Position glow slightly above the torch
+        parent=torch_entity,  # Parent it to the torch so it moves with it
+        double_sided=True
+    )
+    return torch_glow
 
 def create_dungeon_entities(dungeon_map, wall_texture, floor_texture, roof_texture, torch_frames, cell_size=2, floor_tile_size=2, player=None, debug_mode=False):
     entities = []
     torches = []  # List to store torch entities for later updates
     torch_height = 2.5
     torch_offset = 0.2
+    torch_probability = 0.25  # Probability of placing a torch (reduce the number of torches)
 
     height = len(dungeon_map)
     width = len(dungeon_map[0])
 
     floor_positions = []
-
-    # Define the torch placement probability (e.g., 0.2 = 20% chance)
-    torch_placement_chance = 0.2
 
     for y in range(height):
         for x in range(width):
@@ -110,11 +87,10 @@ def create_dungeon_entities(dungeon_map, wall_texture, floor_texture, roof_textu
                 )
                 entities.append(wall)
 
-                torch_position = None
-                torch_rotation = None
+                if random.random() < torch_probability:  # Random chance to place a torch
+                    torch_position = None
+                    torch_rotation = None
 
-                # Place torches with a random chance
-                if random.random() < torch_placement_chance:
                     if x > 0 and dungeon_map[y][x - 1] == 1:
                         torch_position = Vec3(world_x - cell_size * floor_tile_size / 2 - torch_offset, torch_height, world_z)
                         torch_rotation = Vec3(0, -90, 0)
@@ -130,37 +106,49 @@ def create_dungeon_entities(dungeon_map, wall_texture, floor_texture, roof_textu
 
                     if torch_position:
                         torch = Entity(
-                            model='cube',  # Thin cube for the torch
-                            texture=torch_frames[0],  # Start with the first frame
-                            scale=(1, 1, 0.1),  # Thinner and taller torch
+                            model='cube',  # Use thin cube as torch
+                            texture=torch_frames[0],  # First frame for initialization
+                            scale=(1, 1, 0.01),
                             position=torch_position,
                             rotation=torch_rotation,
                             always_on_top=False,
                             color=color.green if debug_mode else color.white
                         )
 
+                        # Create and attach the torch light with more contrast
                         torch_light = PointLight(
-                            parent=torch,
-                            position=(0, 0.5, 0),
-                            color=color.rgb(255, 140, 0),
-                            attenuation=(1, 0.1, 0.05),
-                            radius=8
+                            parent=torch,  # Make the light follow the torch
+                            position=(0, 0.5, 0),  # Offset the light slightly above the torch
+                            color=color.rgb(255, 140, 0),  # Warm torch color
+                            attenuation=(0.1, 0.05, 0.02),     # More dramatic light falloff
+                            radius=3  # Lower radius for higher contrast
                         )
-                        entities.append(torch)
 
-                        # Add the torch to the list
-                        torches.append(torch)
+                        # Ensure that the torch light is properly parented
+                        torch.torch_light = torch_light
+                        entities.append(torch)
+                        torches.append(torch)  # Add to the list of torches
 
                         if debug_mode:
+                            # Visualize the torch light with a red sphere
                             debug_marker = Entity(
                                 model='sphere',
                                 color=color.red,
                                 scale=0.1,
-                                position=torch.position,
+                                position=torch.position + Vec3(0, 0.5, 0),
                                 always_on_top=True
                             )
                             entities.append(debug_marker)
-                            print(f"Torch placed at position: {torch_position}")
+
+                            # Visualize the light radius using a translucent sphere
+                            light_radius_marker = Entity(
+                                model='sphere',
+                                color=color.rgba(255, 255, 0, 50),  # Semi-transparent yellow sphere
+                                scale=torch_light.radius,
+                                position=torch.position,
+                                always_on_top=True
+                            )
+                            entities.append(light_radius_marker)
 
             if tile == 1 or tile == 3:
                 floor = Entity(
@@ -186,3 +174,15 @@ def create_dungeon_entities(dungeon_map, wall_texture, floor_texture, roof_textu
     entities.append(roof)
 
     return entities, floor_positions, torches  # Return the torches list
+
+
+def flicker_torch_lights(torches, time_passed, min_intensity=0.5, max_intensity=1.0, flicker_speed=0.1):
+    """Simulate torch light flickering by adjusting light intensity randomly."""
+    from random import uniform
+
+    for torch in torches:
+        if hasattr(torch, 'torch_light'):
+            # Use time_passed to scale the flicker speed
+            random_intensity = uniform(min_intensity, max_intensity)
+            torch.torch_light.color = color.rgb(255, int(140 * random_intensity), 0)  # Flicker the light's intensity
+            torch.torch_light.attenuation = (1, flicker_speed * random_intensity * time_passed, 0.05)  # Adjust falloff with flicker

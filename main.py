@@ -3,6 +3,8 @@ from game.enemy import Enemy
 from game.player import create_player
 from game.dungeon_generator import create_dungeon_entities
 from game.manual_dungeon_layout import dungeon_layout
+from pathlib import Path
+import os
 
 app = Ursina()
 
@@ -52,12 +54,19 @@ dungeon_entities, floor_positions, torches = create_dungeon_entities(
     torch_frames=torch_frames,  # Use torch_frames instead of torch_texture
     cell_size=2,
     floor_tile_size=2,
-    debug_mode=True
+    debug_mode=False
 )
 
+# Add fog to limit the player's visibility (optional)
+scene.fog_density = 0.05  # Adjust the density of the fog
+scene.fog_color = color.rgb(0, 0, 0)  # Set the fog to black to simulate darkness
 
+# **New: Increase emissiveness (glow) for torch textures**
+for torch in torches:
+    for frame in torch_frames:
+        frame.emissive = False
 
-# Create the player
+    # Create the player
 player = create_player(hands_texture)
 player.position = (player_start_x * cell_size, -1, player_start_y * cell_size)  # Set player position from the layout
 
@@ -117,15 +126,52 @@ wave_text = Text(
     parent=camera.ui
 )
 
-# Set a low-intensity ambient light so that textures on walls and enemies are visible
-ambient_light = AmbientLight(color=color.rgb(40, 40, 40))  # Dim light but enough to see textures
+# Set a very dim ambient light to make the dungeon dark
+ambient_light = AmbientLight(color=color.rgb(10, 10, 10))  # Very dim light
 ambient_light.parent = scene
 
-# Add directional light for a dim directional effect
+# Optional: Add a very dim directional light for soft lighting
 directional_light = DirectionalLight()
-directional_light.color = color.rgb(60, 60, 60)  # Slightly brighter directional light
+directional_light.color = color.rgb(100, 100, 100)  # Very dim light
 directional_light.direction = Vec3(0, -1, -1)
 directional_light.parent = scene
+
+# Print the current working directory to debug the file path issue
+print(f"Current working directory: {os.getcwd()}")
+
+# Define the path to the shaders relative to the working directory
+vertex_shader_path = Path('assets/shaders/bloom_vertex.glsl')
+fragment_shader_path = Path('assets/shaders/bloom_fragment.glsl')
+
+# Check if the files exist before attempting to read them
+if not vertex_shader_path.is_file():
+    print(f"Error: Vertex shader file not found at {vertex_shader_path}")
+if not fragment_shader_path.is_file():
+    print(f"Error: Fragment shader file not found at {fragment_shader_path}")
+
+# Attempt to load the shaders if they exist
+if vertex_shader_path.is_file() and fragment_shader_path.is_file():
+    bloom_shader = Shader(
+        language=Shader.GLSL,
+        vertex=vertex_shader_path.read_text(),
+        fragment=fragment_shader_path.read_text()
+    )
+
+    # Apply the shader to the camera
+    camera.shader = bloom_shader
+else:
+    print("Shader files not found. Ensure the paths are correct.")
+
+# Print light details for debugging
+print(f"Ambient Light: {ambient_light}, Directional Light: {directional_light}")
+
+# If nothing changes, try force-enabling shadow and lighting settings
+for entity in scene.entities:
+    if hasattr(entity, 'cast_shadows'):
+        entity.cast_shadows = True
+
+    if hasattr(entity, 'receive_shadows'):
+        entity.receive_shadows = True
 
 frame_index = 0
 frame_timer = 0
@@ -145,8 +191,8 @@ def update():
         frame_index = (frame_index + 1) % len(torch_frames)
         frame_timer = 0  # Reset the timer
 
-    # Update each torch's texture and make them face the player in every frame
-    for torch in torches:
+    # Update each torch's texture and make them face the player
+    for torch in torches:  # No tuple unpacking needed, just loop through torches
         torch.texture = torch_frames[frame_index]  # Cycle through the frames
         # Make the torch face the player's current position
         player_position = Vec3(player.position.x, torch.position.y, player.position.z)  # Only track X and Z axis
@@ -159,6 +205,7 @@ def update():
     if not game.enemies:
         game.wave += 1
         game.spawn_enemies()
+
 
 
 app.run()
