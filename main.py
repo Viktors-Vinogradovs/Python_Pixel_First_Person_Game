@@ -9,7 +9,7 @@ from game.simple_2d_enemy import SimpleSpriteEnemy
 app = Ursina()
 
 # Load textures
-wall_texture = load_texture('assets/textures/wall5.png')
+wall_texture = load_texture('assets/textures/wall.png')
 floor_texture = load_texture('assets/textures/floor2.png')
 roof_texture = load_texture('assets/textures/roof4.png')
 torch_frames = [load_texture(f'assets/textures/torch_frame_{i}.png') for i in range(1, 4)]

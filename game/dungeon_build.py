@@ -78,7 +78,6 @@ def create_dungeon_entities(dungeon_map, wall_texture, floor_texture, roof_textu
             world_z = y * cell_size * floor_tile_size
 
             if tile == 0:
-                # Create wall entities
                 wall = Entity(
                     model='cube',
                     texture=wall_texture,
@@ -88,12 +87,10 @@ def create_dungeon_entities(dungeon_map, wall_texture, floor_texture, roof_textu
                 )
                 entities.append(wall)
 
-                # Create torch with random chance
-                if random.random() < torch_probability:
+                if random.random() < torch_probability:  # Random chance to place a torch
                     torch_position = None
                     torch_rotation = None
 
-                    # Determine torch placement based on nearby tiles
                     if x > 0 and dungeon_map[y][x - 1] == 1:
                         torch_position = Vec3(world_x - cell_size * floor_tile_size / 2 - torch_offset, torch_height, world_z)
                         torch_rotation = Vec3(0, -90, 0)
@@ -109,54 +106,57 @@ def create_dungeon_entities(dungeon_map, wall_texture, floor_texture, roof_textu
 
                     if torch_position:
                         torch = Entity(
-                            model='cube',  # Use thin cube as torch
+                            model='quad',  # Use quad for torches
                             texture=torch_frames[0],  # First frame for initialization
-                            scale=(1, 1, 0.01),
+                            scale=(1, 2),  # Adjust scale for the torch
                             position=torch_position,
                             rotation=torch_rotation,
                             always_on_top=False,
-                            color=color.green if debug_mode else color.white
+                            double_sided=True  # Ensure torch is visible from both sides
                         )
+
+                        if player:  # Only make the torch look at the player if player is provided
+                            torch.look_at(player.position)
 
                         # Create and attach the torch light with more contrast
                         torch_light = PointLight(
                             parent=torch,  # Make the light follow the torch
                             position=(0, 0.5, 0),  # Offset the light slightly above the torch
                             color=color.rgb(255, 140, 0),  # Warm torch color
-                            attenuation=(0.1, 0.05, 0.02),     # More dramatic light falloff
+                            attenuation=(0.1, 0.05, 0.02),  # More dramatic light falloff
                             radius=3  # Lower radius for higher contrast
                         )
 
+                        # Ensure that the torch light is properly parented
                         torch.torch_light = torch_light
                         entities.append(torch)
                         torches.append(torch)  # Add to the list of torches
 
             if tile == 1 or tile == 3:
-                # Create floor entities
                 floor = Entity(
                     model='cube',
                     texture=floor_texture,
                     collider='box',
                     scale=(cell_size * floor_tile_size, 0.05, cell_size * floor_tile_size),
-                    position=(world_x, 0, world_z),
+                    position=(world_x, 0, world_z),  # Set Y to 0 to make sure the floor is at ground level
                 )
                 entities.append(floor)
-                floor_positions.append((world_x, 0, world_z))  # Store floor positions
+                floor_positions.append((world_x, 0, world_z))  # Update floor Y position to match the floor entity
 
-    # Create a single large roof covering the entire dungeon
+
     total_dungeon_width = width * cell_size * floor_tile_size
     total_dungeon_height = height * cell_size * floor_tile_size
 
     roof = Entity(
         model='cube',
         texture=roof_texture,
-        texture_scale=(total_dungeon_width / cell_size, total_dungeon_height / cell_size),
+        texture_scale=(total_dungeon_width, total_dungeon_height),
         scale=(total_dungeon_width, 0.1, total_dungeon_height),
         position=(total_dungeon_width / 2, cell_size * 2, total_dungeon_height / 2)
     )
     entities.append(roof)
 
-    return entities, floor_positions, torches
+    return entities, floor_positions, torches  # Return the torches list
 
 def flicker_torch_lights(torches, time_passed, min_intensity=0.5, max_intensity=1.0, flicker_speed=0.1):
     """Simulate torch light flickering by adjusting light intensity randomly."""
