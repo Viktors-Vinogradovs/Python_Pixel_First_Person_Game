@@ -2,8 +2,6 @@
 from ursina import *
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from game.enemy import Enemy
 
 class Projectile(Entity):
     def __init__(self, position, direction, **kwargs):
@@ -12,22 +10,35 @@ class Projectile(Entity):
             color=color.yellow,
             scale=0.2,
             position=position,
-            collider='sphere',
+            collider='sphere',  # Ensures the projectile has a collider
             **kwargs
         )
         self.direction = direction.normalized()
-        self.speed = 20
+        self.speed = 20  # Speed of the projectile
 
     def update(self):
+        # Move the projectile in the given direction
         self.position += self.direction * self.speed * time.dt
-        # Destroy if out of range
-        if distance(self.position, camera.position) > 50:
-            destroy(self)
 
-        # Check collision with enemies
+        # Destroy the projectile if it is too far away from the camera/player
+        if distance(self.position, camera.position) > 50:
+            print(f"Projectile destroyed due to range limit.")
+            destroy(self)
+            return  # Prevent further execution after destruction
+
+        # Check for collision with any entity
         hit_info = self.intersects()
         if hit_info.hit:
-            # Instead of isinstance, check if entity has 'take_damage' method
-            if hasattr(hit_info.entity, 'take_damage'):
-                hit_info.entity.take_damage(25)  # Damage the enemy
+            print(f"Projectile hit entity: {hit_info.entity}, Type: {type(hit_info.entity)}")
+
+            # Check if the hit entity has the 'take_damage' method (i.e., it's an enemy)
+            if hasattr(hit_info.entity, 'take_damage') and hit_info.entity.enabled:
+                print("Projectile hit an enemy! Applying damage...")
+                hit_info.entity.take_damage(25)  # Apply 25 damage to the enemy
                 destroy(self)
+                return  # Prevent further execution after destruction
+            else:
+                print("Projectile hit something, but it's not an enemy.")
+                # Optionally destroy the projectile if it hits something else
+                destroy(self)
+                return  # Prevent further execution after destruction

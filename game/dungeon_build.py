@@ -78,6 +78,7 @@ def create_dungeon_entities(dungeon_map, wall_texture, floor_texture, roof_textu
             world_z = y * cell_size * floor_tile_size
 
             if tile == 0:
+                # Create wall entities
                 wall = Entity(
                     model='cube',
                     texture=wall_texture,
@@ -87,10 +88,12 @@ def create_dungeon_entities(dungeon_map, wall_texture, floor_texture, roof_textu
                 )
                 entities.append(wall)
 
-                if random.random() < torch_probability:  # Random chance to place a torch
+                # Create torch with random chance
+                if random.random() < torch_probability:
                     torch_position = None
                     torch_rotation = None
 
+                    # Determine torch placement based on nearby tiles
                     if x > 0 and dungeon_map[y][x - 1] == 1:
                         torch_position = Vec3(world_x - cell_size * floor_tile_size / 2 - torch_offset, torch_height, world_z)
                         torch_rotation = Vec3(0, -90, 0)
@@ -124,57 +127,36 @@ def create_dungeon_entities(dungeon_map, wall_texture, floor_texture, roof_textu
                             radius=3  # Lower radius for higher contrast
                         )
 
-                        # Ensure that the torch light is properly parented
                         torch.torch_light = torch_light
                         entities.append(torch)
                         torches.append(torch)  # Add to the list of torches
 
-                        if debug_mode:
-                            # Visualize the torch light with a red sphere
-                            debug_marker = Entity(
-                                model='sphere',
-                                color=color.red,
-                                scale=0.1,
-                                position=torch.position + Vec3(0, 0.5, 0),
-                                always_on_top=True
-                            )
-                            entities.append(debug_marker)
-
-                            # Visualize the light radius using a translucent sphere
-                            light_radius_marker = Entity(
-                                model='sphere',
-                                color=color.rgba(255, 255, 0, 50),  # Semi-transparent yellow sphere
-                                scale=torch_light.radius,
-                                position=torch.position,
-                                always_on_top=True
-                            )
-                            entities.append(light_radius_marker)
-
             if tile == 1 or tile == 3:
+                # Create floor entities
                 floor = Entity(
                     model='cube',
                     texture=floor_texture,
                     collider='box',
                     scale=(cell_size * floor_tile_size, 0.05, cell_size * floor_tile_size),
-                    position=(world_x, 0.025, world_z),
+                    position=(world_x, 0, world_z),
                 )
                 entities.append(floor)
-                floor_positions.append((world_x, 0, world_z))
+                floor_positions.append((world_x, 0, world_z))  # Store floor positions
 
+    # Create a single large roof covering the entire dungeon
     total_dungeon_width = width * cell_size * floor_tile_size
     total_dungeon_height = height * cell_size * floor_tile_size
 
     roof = Entity(
         model='cube',
         texture=roof_texture,
-        texture_scale=(total_dungeon_width, total_dungeon_height),
+        texture_scale=(total_dungeon_width / cell_size, total_dungeon_height / cell_size),
         scale=(total_dungeon_width, 0.1, total_dungeon_height),
         position=(total_dungeon_width / 2, cell_size * 2, total_dungeon_height / 2)
     )
     entities.append(roof)
 
-    return entities, floor_positions, torches  # Return the torches list
-
+    return entities, floor_positions, torches
 
 def flicker_torch_lights(torches, time_passed, min_intensity=0.5, max_intensity=1.0, flicker_speed=0.1):
     """Simulate torch light flickering by adjusting light intensity randomly."""
